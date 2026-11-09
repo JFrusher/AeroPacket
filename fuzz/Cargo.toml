@@ -1,0 +1,22 @@
+[package]
+name = "aeropacket-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+aeropacket = { path = "..", default-features = false }
+
+[[bin]]
+name = "decode_frame"
+path = "fuzz_targets/decode_frame.rs"
+test = false
+doc = false
+bench = false
+
+# Keep the fuzz crate out of any parent workspace.
+[workspace]
