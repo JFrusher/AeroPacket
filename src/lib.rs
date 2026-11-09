@@ -29,4 +29,9 @@ pub mod error;
 pub mod packet;
 
 pub use error::AeropacketError;
+
+// Compiles and runs the README's Rust examples under `cargo test`.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 pub use packet::{Obstacle, ObstacleType, Packet, SurfaceCondition};
