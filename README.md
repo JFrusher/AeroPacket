@@ -12,7 +12,8 @@ payload = 40-byte core ‖ 0–5 obstacle records × 4 bytes
 
 - All multi-byte fields little-endian. Full field table: `src/packet.rs` module docs.
 - Max frame is **64 bytes including delimiter** (5 obstacles). Enforced at compile time.
-- Receiver splits stream on `0x00`, passes each chunk to `codec::decode_frame`.
+- Receiver: feed bytes to `codec::FrameReader::push` (one at a time, no alloc). It splits on `0x00`,
+  decodes, and resyncs after any bad frame.
 
 ## Use
 
@@ -33,7 +34,7 @@ cargo run -- decode <hex>                  # -> JSON (human units)
 ## Check
 
 ```sh
-cargo test
+cargo test                     # incl. tests/link_sim.rs: noisy radio link emulation
 cargo clippy --all-targets -- -D warnings
 cargo build --lib --no-default-features --target thumbv7em-none-eabihf
 cd fuzz && cargo +nightly fuzz run decode_frame -- -max_total_time=60

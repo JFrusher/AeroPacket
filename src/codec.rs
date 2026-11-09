@@ -70,6 +70,55 @@ pub fn decode_frame(body: &[u8]) -> Result<Packet, AeropacketError> {
     Packet::from_bytes(payload)
 }
 
+/// Splits a byte stream on [`DELIMITER`] and decodes each frame.
+///
+/// Feed bytes one at a time (e.g. from a UART interrupt). Fixed buffer, no allocation.
+/// Bytes before the first delimiter may be a partial frame and will report an error;
+/// the reader is back in sync after that delimiter.
+#[derive(Debug, Clone)]
+pub struct FrameReader {
+    buf: [u8; MAX_BODY_LEN],
+    len: usize,
+    overflow: bool,
+}
+
+impl Default for FrameReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FrameReader {
+    /// An empty reader.
+    pub const fn new() -> Self {
+        Self { buf: [0; MAX_BODY_LEN], len: 0, overflow: false }
+    }
+
+    /// Push one byte. Returns `Some` when a delimiter ends a frame:
+    /// the packet, or why that frame was rejected. Back-to-back delimiters
+    /// (idle line) return `None`.
+    pub fn push(&mut self, byte: u8) -> Option<Result<Packet, AeropacketError>> {
+        if byte != DELIMITER {
+            match self.buf.get_mut(self.len) {
+                Some(slot) => {
+                    *slot = byte;
+                    self.len += 1;
+                }
+                None => self.overflow = true,
+            }
+            return None;
+        }
+        let result = match (self.len, self.overflow) {
+            (0, false) => None,
+            (_, true) => Some(Err(AeropacketError::InvalidFrame)),
+            (n, false) => Some(decode_frame(&self.buf[..n])),
+        };
+        self.len = 0;
+        self.overflow = false;
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,6 +186,19 @@ mod tests {
     #[test]
     fn oversize_body_rejected() {
         assert_eq!(decode_frame(&[1u8; MAX_BODY_LEN + 1]), Err(AeropacketError::InvalidFrame));
+    }
+
+    #[test]
+    fn reader_skips_idle_and_recovers_from_overflow() {
+        let (f, n) = encode(&sample());
+        let mut r = FrameReader::new();
+        assert!(r.push(DELIMITER).is_none());
+        for _ in 0..MAX_BODY_LEN + 10 {
+            assert!(r.push(0xAA).is_none());
+        }
+        assert_eq!(r.push(DELIMITER), Some(Err(AeropacketError::InvalidFrame)));
+        let out: Option<_> = f[..n].iter().filter_map(|&b| r.push(b)).last();
+        assert_eq!(out, Some(Ok(sample())));
     }
 
     #[test]

@@ -36,6 +36,13 @@ struct PacketJson {
     primary_heading_deg: f64,
     max_obstacle_ht_m: u8,
     obstacles: Vec<ObstacleJson>,
+    // Optional on input (spec says zero); always printed so decode → encode keeps every byte.
+    #[serde(default)]
+    spatial_reserved: [u8; 4],
+    #[serde(default)]
+    atmos_reserved: u8,
+    #[serde(default)]
+    reserved: [u8; 5],
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -115,7 +122,9 @@ fn to_packet(j: &PacketJson) -> Result<Packet, String> {
         obstacle_count: j.obstacles.len() as u8,
         max_obstacle_ht_m: j.max_obstacle_ht_m,
         obstacles,
-        ..Packet::default()
+        spatial_reserved: j.spatial_reserved,
+        atmos_reserved: j.atmos_reserved,
+        reserved: j.reserved,
     })
 }
 
@@ -154,6 +163,9 @@ fn from_packet(p: &Packet) -> PacketJson {
                 kind: o.type_flag,
             })
             .collect(),
+        spatial_reserved: p.spatial_reserved,
+        atmos_reserved: p.atmos_reserved,
+        reserved: p.reserved,
     }
 }
 
@@ -216,6 +228,15 @@ mod tests {
         let original: PacketJson = serde_json::from_str(include_str!("../../examples/sample.json")).unwrap();
         // Quantized fields come back exact here because sample.json uses on-grid values.
         assert_eq!(format!("{back:?}"), format!("{original:?}"));
+    }
+
+    /// Frame with spatial_reserved[0]=0xAB, atmos_reserved=0xCD, reserved[0]=0xEF.
+    #[test]
+    fn reserved_bytes_survive_decode_encode() {
+        let frame = "060107100e2b010d63c9eb4e90245a9a103204ab01010fc80c12c00994271201cd400219ef0101010b78201901c8800f02d7d800";
+        let path = std::env::temp_dir().join("aeropacket_reserved.json");
+        std::fs::write(&path, decode(frame).unwrap()).unwrap();
+        assert_eq!(encode(path.to_str().unwrap()).unwrap(), frame);
     }
 
     #[test]
